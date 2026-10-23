@@ -34,11 +34,7 @@ GET https://{BENFEN_GATEWAY}/api/v1/benpay-ai/suppliers
 GET https://{BENFEN_GATEWAY}/api/v1/benpay-ai/call-config
 ```
 
-The default gateway is `https://cli-gateway.benfenpay.com`. For the test environment, set:
-
-```bash
-export BENFEN_GATEWAY="https://benfengate5.openblock.vip"
-```
+The default gateway is `https://cli-gateway.benfenpay.com`.
 
 The catalog request is public and does not require an API key. Set the video gateway API key before generating a video:
 
@@ -46,13 +42,7 @@ The catalog request is public and does not require an API key. Set the video gat
 export BENPAYAI_API_KEY="your-api-key"
 ```
 
-The `call-config` response supplies the full video protocol URLs under `data.videoProtocols`. The node uses those URLs directly, so the gateway domain is configured in one place. `BENPAYAI_VIDEO_BASE_URL` is only a local fallback when `call-config` is unavailable:
-
-```bash
-export BENPAYAI_VIDEO_BASE_URL="https://api-llmpooltest.marslabai.com"
-```
-
-If no video gateway is configured, the node uses `https://127.0.0.1:19324`.
+The node reads the complete HTTPS create and query URLs from `data.videoProtocols` in `call-config` and uses those URLs directly. The video gateway domain is configured in one place by Benfengate.
 
 ## Catalog loading and fallback
 

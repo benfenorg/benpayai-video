@@ -24,11 +24,11 @@ license = "MIT"
 # ]
 
 [project.urls]
-Repository = ""
+Repository = "https://github.com/benfenorg/benpayai-video"
 #  Used by Comfy Registry https://registry.comfy.org
 
 [tool.comfy]
-PublisherId = ""
+PublisherId = "fleet24"
 DisplayName = "benpayai-video"
 Icon = ""
 includes = []

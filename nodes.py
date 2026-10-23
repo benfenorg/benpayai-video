@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import re
@@ -20,7 +21,6 @@ from comfy_api.latest import IO, InputImpl, ui
 POLL_INTERVAL_SECONDS = 5
 TASK_TIMEOUT_SECONDS = 1800
 VIDEO_DOWNLOAD_TIMEOUT_SECONDS = 300
-DEFAULT_SERVER_URL = "https://127.0.0.1:19324"
 DEFAULT_PROTOCOL = "doubao"
 DEFAULT_MODEL = "doubao-seedance-2.0"
 SUPPLIER_FEATURE = "videos"
@@ -30,18 +30,6 @@ SUPPLIER_CACHE_FILENAME = "benpayai-video-suppliers.json"
 TERMINAL_FAILURE_STATES = {"failed", "failure", "cancelled", "deleted"}
 MAX_IMAGE_BYTES = 30 * 1024 * 1024
 IMAGE_MODES = ["first_frame", "first_last_frame", "reference_images", "reference_video"]
-
-
-DEFAULT_VIDEO_PROTOCOL_ROUTES = {
-    "doubao": {
-        "create": "/doubao/v1/video/generations",
-        "query": "/doubao/v1/video/generations/{task_id}",
-    },
-    "minimax": {
-        "create": "/minimax/v2/video_generation",
-        "query": "/minimax/v2/video_generation/{task_id}",
-    },
-}
 
 
 def _normalise_gateway_url(value: str) -> str:
@@ -79,7 +67,20 @@ def _read_supplier_cache() -> dict[str, list[dict[str, str]]]:
         payload = json.loads(_supplier_cache_path().read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
-    return _parse_supplier_payload(payload)
+    catalog = _parse_supplier_payload(payload)
+    if catalog:
+        return catalog
+    if isinstance(payload, dict) and all(isinstance(value, list) for value in payload.values()):
+        return {
+            supplier: [
+                {"model": item.get("model", ""), "name": item.get("name", item.get("model", ""))}
+                for item in products
+                if isinstance(item, dict) and isinstance(item.get("model"), str) and item["model"]
+            ]
+            for supplier, products in payload.items()
+            if isinstance(supplier, str) and supplier and isinstance(products, list)
+        }
+    return {}
 
 
 def _write_supplier_cache(catalog: dict[str, list[dict[str, str]]]) -> None:
@@ -128,6 +129,7 @@ def _fetch_supplier_catalog() -> dict[str, list[dict[str, str]]]:
     request = Request(_supplier_request_url(), headers={"Accept": "application/json"})
     with urlopen(request, timeout=SUPPLIER_REQUEST_TIMEOUT_SECONDS) as response:
         payload = json.loads(response.read().decode("utf-8"))
+    _ensure_success_response(payload, "suppliers")
     catalog = _parse_supplier_payload(payload)
     if not catalog:
         raise RuntimeError("Benfengate returned no video suppliers.")
@@ -138,16 +140,14 @@ def _fetch_video_protocol_routes() -> dict[str, dict[str, str]]:
     request = Request(_call_config_request_url(), headers={"Accept": "application/json"})
     with urlopen(request, timeout=SUPPLIER_REQUEST_TIMEOUT_SECONDS) as response:
         payload = json.loads(response.read().decode("utf-8"))
+    _ensure_success_response(payload, "call-config")
     data = payload.get("data") if isinstance(payload, dict) else None
     protocols = data.get("videoProtocols") if isinstance(data, dict) else None
     if not isinstance(protocols, dict):
         raise RuntimeError("Benfengate call-config returned no videoProtocols.")
     routes: dict[str, dict[str, str]] = {}
-    supported_protocols = set(VIDEO_PROTOCOL_OPTIONS)
     for protocol, config in protocols.items():
         if not isinstance(protocol, str) or not isinstance(config, dict):
-            continue
-        if protocol not in supported_protocols:
             continue
         create_task = config.get("createTask")
         query_task = config.get("queryTask")
@@ -173,6 +173,24 @@ def _load_supplier_catalog() -> dict[str, list[dict[str, str]]]:
     return catalog
 
 
+def _ensure_success_response(payload: object, endpoint_name: str) -> None:
+    if not isinstance(payload, dict) or payload.get("code") not in (None, 0):
+        raise RuntimeError(f"Benfengate {endpoint_name} request failed.")
+
+
+def _load_startup_catalog() -> tuple[dict[str, list[dict[str, str]]], dict[str, dict[str, str]]]:
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="benpayai-catalog") as executor:
+        catalog_future = executor.submit(_load_supplier_catalog)
+        routes_future = executor.submit(_fetch_video_protocol_routes)
+        catalog = catalog_future.result()
+        try:
+            routes = routes_future.result()
+        except (OSError, ValueError, RuntimeError, json.JSONDecodeError):
+            routes = {}
+    routes = {protocol: route for protocol, route in routes.items() if protocol in catalog}
+    return catalog, routes
+
+
 def _default_api_key() -> str:
     return os.getenv("BENPAYAI_API_KEY", "")
 
@@ -187,15 +205,11 @@ def _normalise_base_url(value: str) -> str:
     return base_url
 
 
-VIDEO_SUPPLIER_CATALOG = _load_supplier_catalog()
+VIDEO_SUPPLIER_CATALOG, VIDEO_PROTOCOL_ROUTES = _load_startup_catalog()
 VIDEO_PROTOCOL_OPTIONS = list(VIDEO_SUPPLIER_CATALOG) or [DEFAULT_PROTOCOL]
 DEFAULT_SELECTED_PROTOCOL = (
     DEFAULT_PROTOCOL if DEFAULT_PROTOCOL in VIDEO_PROTOCOL_OPTIONS else VIDEO_PROTOCOL_OPTIONS[0]
 )
-try:
-    VIDEO_PROTOCOL_ROUTES = _fetch_video_protocol_routes()
-except (OSError, ValueError, RuntimeError, json.JSONDecodeError):
-    VIDEO_PROTOCOL_ROUTES = DEFAULT_VIDEO_PROTOCOL_ROUTES
 
 
 def _default_model(protocol: str) -> str:
@@ -203,11 +217,6 @@ def _default_model(protocol: str) -> str:
     if products:
         return products[0]["model"]
     return DEFAULT_MODEL
-
-
-def _video_base_url(protocol: str) -> str:
-    server_url = os.getenv("BENPAYAI_VIDEO_BASE_URL", DEFAULT_SERVER_URL)
-    return _normalise_base_url(server_url)
 
 
 def _error_message(body: object) -> str:
@@ -285,33 +294,6 @@ def _prompt_text(prompt: str) -> str:
     if not prompt:
         raise ValueError("Prompt cannot be empty.")
     return prompt
-
-
-def _first_frame_data_url(first_frame) -> str:
-    if first_frame.ndim != 4 or first_frame.shape[0] != 1:
-        raise ValueError("First frame must contain exactly one image.")
-    pixels = (
-        first_frame[0]
-        .detach()
-        .clamp(0, 1)
-        .mul(255)
-        .round()
-        .to(dtype=torch.uint8)
-        .cpu()
-        .numpy()
-    )
-    if pixels.ndim != 3 or pixels.shape[2] not in {1, 3, 4}:
-        raise ValueError("First frame must have one, three, or four channels.")
-    if pixels.shape[2] == 1:
-        pixels = pixels[:, :, 0]
-
-    output = BytesIO()
-    Image.fromarray(pixels).save(output, format="PNG")
-    image_bytes = output.getvalue()
-    if len(image_bytes) > MAX_IMAGE_BYTES:
-        raise ValueError("First frame exceeds the 30 MB image limit.")
-    encoded = base64.b64encode(image_bytes).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
 
 
 def _image_data_urls(images) -> list[str]:
@@ -424,11 +406,9 @@ def _build_request_body(
     raise ValueError(f"Unsupported video protocol: {protocol}")
 
 
-def _resolve_video_url(route: str, base_url: str, task_id: str | None = None) -> str:
+def _resolve_video_url(route: str, task_id: str | None = None) -> str:
     route = route.replace("{task_id}", task_id or "")
-    if route.startswith(("http://", "https://")):
-        return _normalise_base_url(route)
-    return _normalise_base_url(f"{base_url.rstrip('/')}/{route.lstrip('/')}")
+    return _normalise_base_url(route)
 
 
 def _task_payload(response: dict) -> dict:
@@ -475,7 +455,6 @@ async def _generate_video(
     if protocol_routes is None:
         raise ValueError(f"Unsupported video protocol: {protocol}")
     model = model.strip() or _default_model(protocol)
-    base_url = _video_base_url(protocol)
     api_key = _default_api_key().strip()
     if not api_key:
         raise ValueError("BENPAYAI_API_KEY must be set before starting ComfyUI.")
@@ -504,7 +483,7 @@ async def _generate_video(
         create_response = await _request_json(
             session,
             "POST",
-            _resolve_video_url(protocol_routes["create"], base_url),
+            _resolve_video_url(protocol_routes["create"]),
             headers,
             request_body,
         )
@@ -522,7 +501,7 @@ async def _generate_video(
             query_response = await _request_json(
                 session,
                 "GET",
-                _resolve_video_url(protocol_routes["query"], base_url, task_id),
+                _resolve_video_url(protocol_routes["query"], task_id),
                 headers,
             )
             task = _task_payload(query_response)
@@ -649,6 +628,7 @@ class BenpayAIVideoFromImages(IO.ComfyNode):
                 ),
                 IO.Image.Input(
                     "images",
+                    optional=True,
                     tooltip="Connect one image, two ordered frames, or one to five reference images.",
                 ),
                 IO.String.Input(
