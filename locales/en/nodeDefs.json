@@ -1,0 +1,100 @@
+{
+  "BenpayVideo": {
+    "display_name": "BenPay Video Text to Video",
+    "description": "Create a video from text with BenPay.",
+    "inputs": {
+      "protocol": {
+        "name": "Provider",
+        "tooltip": "Choose a video provider."
+      },
+      "model": {
+        "name": "Model",
+        "tooltip": "Choose a model or enter its ID."
+      },
+      "prompt": {
+        "name": "Prompt",
+        "tooltip": "Describe the video you want to create."
+      },
+      "resolution": {
+        "name": "Resolution",
+        "tooltip": "Choose the output resolution."
+      },
+      "duration": {
+        "name": "Duration (seconds)",
+        "tooltip": "Set the video duration in seconds."
+      },
+      "ratio": {
+        "name": "Aspect ratio",
+        "tooltip": "Choose the output aspect ratio."
+      },
+      "seed": {
+        "name": "Seed",
+        "tooltip": "Set the random seed."
+      },
+      "generation": {
+        "name": "Generation",
+        "tooltip": "Keep unchanged to resume the existing task. Use Regenerate to start another video."
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "Video"
+      }
+    }
+  },
+  "BenpayVideoFromImages": {
+    "display_name": "BenPay Video Image to Video",
+    "description": "Create a video from images or reference videos with BenPay.",
+    "inputs": {
+      "protocol": {
+        "name": "Provider",
+        "tooltip": "Choose a video provider."
+      },
+      "model": {
+        "name": "Model",
+        "tooltip": "Choose a model or enter its ID."
+      },
+      "prompt": {
+        "name": "Prompt",
+        "tooltip": "Describe the video you want to create."
+      },
+      "resolution": {
+        "name": "Resolution",
+        "tooltip": "Choose the output resolution."
+      },
+      "duration": {
+        "name": "Duration (seconds)",
+        "tooltip": "Set the video duration in seconds."
+      },
+      "ratio": {
+        "name": "Aspect ratio",
+        "tooltip": "Choose the output aspect ratio."
+      },
+      "seed": {
+        "name": "Seed",
+        "tooltip": "Set the random seed."
+      },
+      "image_mode": {
+        "name": "Image mode",
+        "tooltip": "Choose first frame, first and last frame, reference images, or reference video (Doubao only)."
+      },
+      "images": {
+        "name": "Images",
+        "tooltip": "Reference images: Doubao 1-4; MiniMax 1-5. First-frame modes require one or two images."
+      },
+      "reference_video_urls": {
+        "name": "Reference video URLs",
+        "tooltip": "Doubao only. Enter at most 4 HTTPS reference video URLs, one per line."
+      },
+      "generation": {
+        "name": "Generation",
+        "tooltip": "Keep unchanged to resume the existing task. Use Regenerate to start another video."
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "Video"
+      }
+    }
+  }
+}

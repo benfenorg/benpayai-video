@@ -1,0 +1,9 @@
+config.json
+.config.json.tmp-*
+.venv/
+tests/
+__pycache__/
+.git/
+.idea/
+.ruff_cache/
+requirements-test.txt

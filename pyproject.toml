@@ -1,9 +1,9 @@
 [project]
 
 dependencies = []
-name = "benpayai-video"
-description = "ComfyUI custom nodes for video generation through BenpayAI protocols."
-version = "1.0.0"
+name = "benpay-video"
+description = "ComfyUI custom nodes for video generation through BenPay protocols."
+version = "1.0.1"
 license = "MIT"
 
 # classifiers = [
@@ -24,12 +24,12 @@ license = "MIT"
 # ]
 
 [project.urls]
-Repository = "https://github.com/benfenorg/benpayai-video"
+Repository = "https://github.com/benfenorg/benpay-video"
 #  Used by Comfy Registry https://registry.comfy.org
 
 [tool.comfy]
 PublisherId = "fleet24"
-DisplayName = "benpayai-video"
+DisplayName = "BenPay-Video"
 Icon = ""
 includes = []
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility

@@ -1,14 +1,22 @@
-"""ComfyUI video generation nodes for BenpayAI protocols."""
+"""ComfyUI video generation nodes for BenPay protocols."""
 
-from .nodes import BenpayAIVideo, BenpayAIVideoFromImages
+from server import PromptServer
+
+from .configuration_routes import register_configuration_routes
+from .nodes import BenpayVideo, BenpayVideoFromImages
+
+WEB_DIRECTORY = "./web"
+
+
+register_configuration_routes(PromptServer.instance.routes)
 
 
 NODE_CLASS_MAPPINGS = {
-    "BenpayAIVideo": BenpayAIVideo,
-    "BenpayAIVideoFromImages": BenpayAIVideoFromImages,
+    "BenpayVideo": BenpayVideo,
+    "BenpayVideoFromImages": BenpayVideoFromImages,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "BenpayAIVideo": "BenpayAI Video 文生视频",
-    "BenpayAIVideoFromImages": "BenpayAI Video 图片/参考视频生成",
+    "BenpayVideo": "BenPay Video Text to Video",
+    "BenpayVideoFromImages": "BenPay Video Image to Video",
 }

@@ -1,65 +1,67 @@
-# ComfyUI BenpayAI Video
+# BenPay-Video for ComfyUI
 
-ComfyUI custom nodes for video generation through BenpayAI video protocols. The nodes load the currently available video suppliers and products from Benfengate at startup, while keeping the model field editable for manual model selection.
+Generate videos from text or images directly in ComfyUI with BenPay.
 
 ## Features
 
-- Select a video protocol from the suppliers currently exposed by Benfengate.
-- Use the recommended model loaded from the public supplier catalog.
-- Enter any model identifier manually when needed.
-- Text-to-video and first-frame-to-video generation.
-- Automatic task polling, video download, and ComfyUI preview output.
-- Local catalog cache and built-in fallback values when Benfengate is unavailable.
+- Create videos from text prompts, images, or reference videos.
+- Choose a video model and adjust resolution, duration, and aspect ratio.
+- Preview and save generated videos in ComfyUI.
+- Get started with ready-to-use example workflows.
+- Save your API key once for future use.
+- Follow ComfyUI’s language setting: English, Simplified Chinese, or Traditional Chinese.
 
 ## Installation
 
-Install this project under the `custom_nodes` directory of your ComfyUI installation:
+Install the node in your ComfyUI `custom_nodes` directory:
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone <repository-url> benpayai-video
+git clone https://github.com/benfenorg/benpay-video.git
 ```
 
-Restart ComfyUI after installation. The nodes are available under the `video/BenPay` category:
+Restart ComfyUI and find the two BenPay nodes under `video/BenPay`.
 
-- **BenpayAI Video Text to Video**
-- **BenpayAI Video Image/Reference Video to Video**
+You can also use `comfyui-setup.sh` on macOS/Linux or `comfyui-setup.ps1` on
+Windows to install the node and configure your API key automatically.
 
-## Configuration
+## Example workflows
 
-The public Benfengate catalog and video gateway routes are loaded from:
+- [Text to video · t2v](example_workflows/text-to-video-t2v.json)
+- [Image to video · i2v](example_workflows/image-to-video-i2v.json)
 
-```text
-GET https://{BENFEN_GATEWAY}/api/v1/benpay-ai/suppliers
-GET https://{BENFEN_GATEWAY}/api/v1/benpay-ai/call-config
-```
+Download a JSON file and open it in ComfyUI, or select an example from ComfyUI's
+workflow templates. Both examples default to **720p · 5 seconds**.
 
-The default gateway is `https://cli-gateway.benfenpay.com`.
+Enter your prompt and choose a model. For image to video, upload a first-frame
+image before running. The generated video appears in the node for preview and
+is saved to ComfyUI's output directory.
 
-The catalog request is public and does not require an API key. Set the video gateway API key before generating a video:
+If querying or downloading fails, rerun the same node with unchanged inputs to
+resume its task. Keep the seed fixed when retrying. Successful downloads are
+reused; click **Regenerate on next run** and confirm to create another video.
+Save your workflow to keep task recovery available after reloading.
+Creating a new task may incur another charge even if an earlier task is running.
+MiniMax image-to-video uses the **adaptive** aspect ratio; text-to-video supports
+16:9, 9:16, 4:3, 3:4, 1:1 and 21:9.
+Reference-image mode accepts 1–4 images for Doubao and 1–5 for MiniMax.
+Reference-video mode is available for Doubao only, with at most 4 reference videos.
 
-```bash
-export BENPAYAI_API_KEY="your-api-key"
-```
+For programmatic use, see [API task recovery](docs/api-task-recovery.md).
 
-The node reads the complete HTTPS create and query URLs from `data.videoProtocols` in `call-config` and uses those URLs directly. The video gateway domain is configured in one place by Benfengate.
+## API key
 
-## Catalog loading and fallback
+1. Click **Configure API Key** on either BenPay node.
+2. Enter your BenPay API key and click **Save to local**.
+3. Run your workflow.
 
-At startup, the node reads the local catalog cache and then requests the latest supplier catalog. A successful response updates the in-memory catalog and the cache. If the request fails, the node uses the previous cache; if no cache exists, it falls back to the built-in `doubao` protocol and `doubao-seedance-2.0` model. Catalog loading has a five-second timeout and never prevents node registration.
+If you run a workflow without a configured key, the configuration dialog opens
+automatically. Save your key, then run the workflow again. Both nodes share the
+same saved key.
 
-The default cache file is `benpayai-video-suppliers.json` in the ComfyUI user directory. Set `BENPAYAI_SUPPLIER_CACHE_FILE` to use another path.
-
-## Video protocols
-
-The current protocol routes are:
-
-- Doubao: `POST /doubao/v1/video/generations`, `GET /doubao/v1/video/generations/{task_id}`
-- MiniMax: `POST /minimax/v2/video_generation`, `GET /minimax/v2/video_generation/{task_id}`
-
-The `protocol` input uses supplier identifiers returned by Benfengate. The `model` input is an editable string whose default comes from the first video product for the selected startup default protocol.
-
-The image node supports `first_frame`, `first_last_frame`, `reference_images`, and `reference_video` modes. Reference video URLs must use HTTPS or a data URL. Doubao and MiniMax requests are assembled by separate protocol adapters because their payload formats differ.
+Your key is stored locally in plaintext in the node's `config.json`. The interface
+shows a masked value, and the key is never included in workflow files. Node
+updates preserve your saved configuration.
 
 ## License
 

@@ -1,0 +1,100 @@
+{
+  "BenpayVideo": {
+    "display_name": "BenPay 文字生成影片",
+    "description": "使用 BenPay 將文字描述轉為影片。",
+    "inputs": {
+      "protocol": {
+        "name": "影片服務",
+        "tooltip": "選擇影片服務。"
+      },
+      "model": {
+        "name": "模型",
+        "tooltip": "選擇模型或輸入模型 ID。"
+      },
+      "prompt": {
+        "name": "提示詞",
+        "tooltip": "描述想要產生的影片。"
+      },
+      "resolution": {
+        "name": "解析度",
+        "tooltip": "選擇輸出影片的解析度。"
+      },
+      "duration": {
+        "name": "時長（秒）",
+        "tooltip": "設定影片時長，單位為秒。"
+      },
+      "ratio": {
+        "name": "畫面比例",
+        "tooltip": "選擇輸出畫面的比例。"
+      },
+      "seed": {
+        "name": "隨機種子",
+        "tooltip": "設定隨機種子。"
+      },
+      "generation": {
+        "name": "生成批次",
+        "tooltip": "保持不變以恢復原任務；點選「重新生成」可在下次執行時建立新影片。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "影片"
+      }
+    }
+  },
+  "BenpayVideoFromImages": {
+    "display_name": "BenPay 圖片生成影片",
+    "description": "使用 BenPay 將圖片或參考影片轉為影片。",
+    "inputs": {
+      "protocol": {
+        "name": "影片服務",
+        "tooltip": "選擇影片服務。"
+      },
+      "model": {
+        "name": "模型",
+        "tooltip": "選擇模型或輸入模型 ID。"
+      },
+      "prompt": {
+        "name": "提示詞",
+        "tooltip": "描述想要產生的影片。"
+      },
+      "resolution": {
+        "name": "解析度",
+        "tooltip": "選擇輸出影片的解析度。"
+      },
+      "duration": {
+        "name": "時長（秒）",
+        "tooltip": "設定影片時長，單位為秒。"
+      },
+      "ratio": {
+        "name": "畫面比例",
+        "tooltip": "選擇輸出畫面的比例。"
+      },
+      "seed": {
+        "name": "隨機種子",
+        "tooltip": "設定隨機種子。"
+      },
+      "image_mode": {
+        "name": "圖片模式",
+        "tooltip": "選擇首幀、首尾幀、參考圖片或參考影片（僅豆包）。"
+      },
+      "images": {
+        "name": "圖片",
+        "tooltip": "參考圖片：豆包 1-4 張，MiniMax 1-5 張；首幀和首尾幀模式分別需要 1 張和 2 張圖片。"
+      },
+      "reference_video_urls": {
+        "name": "參考影片網址",
+        "tooltip": "僅豆包支援，最多輸入 4 個 HTTPS 參考影片網址，每行一個。"
+      },
+      "generation": {
+        "name": "生成批次",
+        "tooltip": "保持不變以恢復原任務；點選「重新生成」可在下次執行時建立新影片。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "影片"
+      }
+    }
+  }
+}
