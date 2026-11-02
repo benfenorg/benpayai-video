@@ -3,9 +3,10 @@ import { api } from "../../scripts/api.js";
 
 const fallback = {
   configureKey: "Configure API Key",
-  regenerate: "Regenerate on next run",
+  regenerate: "Generate new video",
+  regenerateReady: "Ready for new generation — click Run",
   regenerateConfirm:
-    "The previous task may still be running or chargeable. Create a new video on the next run instead of resuming?",
+    "Create a new video on the next Run? Additional charges may apply.",
   dialogTitle: "Configure BenPay API Key",
   dialogDescription:
     "Save your API key locally, then run the workflow again. The key is not stored in workflows.",

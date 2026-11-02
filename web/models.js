@@ -44,8 +44,11 @@ export async function bindModelSelection(node) {
     ) {
       model.value = products[0].model;
       model.callback?.(model.value);
-      node.setDirtyCanvas(true, true);
     }
+    const values = products.map((product) => product.model);
+    if (model.value && !values.includes(model.value)) values.push(model.value);
+    model.options = { ...model.options, values };
+    node.setDirtyCanvas(true, true);
   }
 
   const onProtocolChanged = protocol.callback;

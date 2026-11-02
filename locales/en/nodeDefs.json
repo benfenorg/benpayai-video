@@ -1,6 +1,6 @@
 {
   "BenpayVideo": {
-    "display_name": "BenPay Video Text to Video",
+    "display_name": "BenPay Text to Video",
     "description": "Create a video from text with BenPay.",
     "inputs": {
       "protocol": {
@@ -43,7 +43,7 @@
     }
   },
   "BenpayVideoFromImages": {
-    "display_name": "BenPay Video Image to Video",
+    "display_name": "BenPay Image to Video",
     "description": "Create a video from images or reference videos with BenPay.",
     "inputs": {
       "protocol": {

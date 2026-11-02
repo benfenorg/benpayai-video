@@ -35,7 +35,9 @@ function renderStatus() {
     const button = configureButtons.get(node);
     if (button) button.name = t("configureKey");
     const regenerate = regenerateButtons.get(node);
-    if (regenerate) regenerate.name = t("regenerate");
+    if (regenerate) {
+      regenerate.name = t(regenerate.readyForGeneration ? "regenerateReady" : "regenerate");
+    }
     node.setDirtyCanvas(true, true);
   }
 }

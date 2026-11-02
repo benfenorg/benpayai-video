@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import os
 import re
 import tempfile
@@ -27,6 +28,8 @@ from .task_recovery import (
     node_recovery_scope,
 )
 
+LOGGER = logging.getLogger(__name__)
+
 POLL_INTERVAL_SECONDS = 5
 QUERY_RETRY_BASE_SECONDS = 1
 TASK_TIMEOUT_SECONDS = 1800
@@ -47,7 +50,7 @@ TERMINAL_FAILURE_STATES = {
 }
 MAX_IMAGE_BYTES = 30 * 1024 * 1024
 IMAGE_MODES = ["first_frame", "first_last_frame", "reference_images", "reference_video"]
-VIDEO_RESOLUTION_OPTIONS = ["480p", "720p", "768p", "1080p", "480P", "768P"]
+VIDEO_RESOLUTION_OPTIONS = ["480p", "720p", "1080p", "480P", "768P"]
 DEFAULT_VIDEO_RESOLUTION = "720p"
 
 
@@ -173,10 +176,77 @@ def _parse_supplier_payload(payload: object) -> dict[str, list[dict[str, str]]]:
     return catalog
 
 
+def _redact_response(value: object, secrets: list[str]) -> object:
+    if isinstance(value, dict):
+        private_fields = {
+            "authorization",
+            "apikey",
+            "token",
+            "accesstoken",
+            "refreshtoken",
+            "secret",
+            "secretkey",
+            "password",
+            "cookie",
+            "setcookie",
+            "sign",
+            "signature",
+            "csrftoken",
+            "prompt",
+            "images",
+            "referencevideos",
+        }
+        return {
+            key: "[redacted]"
+            if key.lower().replace("_", "").replace("-", "") in private_fields
+            else _redact_response(item, secrets)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_response(item, secrets) for item in value]
+    if isinstance(value, str):
+        if value.startswith("data:"):
+            return "[redacted media]"
+        for secret in secrets:
+            if secret:
+                value = value.replace(secret, "[redacted]")
+        return re.sub(r"(?i)Bearer\s+[^\s\"'<>]+", "Bearer [redacted]", value)
+    return value
+
+
+def _log_api_response(
+    method: str,
+    url: str,
+    status: int,
+    response: object,
+    headers: dict[str, str] | None = None,
+    request: dict | None = None,
+) -> None:
+    authorization = (headers or {}).get("Authorization", "")
+    secrets = [authorization, authorization.removeprefix("Bearer ")]
+    request = request or {}
+    prompt = request.get("prompt")
+    if isinstance(prompt, str):
+        secrets.append(prompt)
+    for item in request.get("content", []):
+        if isinstance(item, dict) and isinstance(item.get("text"), str):
+            secrets.append(item["text"])
+    parsed = urlparse(url)
+    LOGGER.info(
+        "[BenPay] %s %s%s response: HTTP %s JSON=%s",
+        method,
+        parsed.hostname,
+        parsed.path,
+        status,
+        json.dumps(_redact_response(response, secrets), ensure_ascii=False),
+    )
+
+
 def _fetch_supplier_catalog() -> dict[str, list[dict[str, str]]]:
     request = Request(_supplier_request_url(), headers={"Accept": "application/json"})
     with urlopen(request, timeout=SUPPLIER_REQUEST_TIMEOUT_SECONDS) as response:
         payload = json.loads(response.read().decode("utf-8"))
+        _log_api_response("GET", request.full_url, response.status, payload)
     _ensure_success_response(payload, "suppliers")
     catalog = _parse_supplier_payload(payload)
     if not catalog:
@@ -190,6 +260,7 @@ def _fetch_video_protocol_routes() -> dict[str, dict[str, str]]:
     )
     with urlopen(request, timeout=SUPPLIER_REQUEST_TIMEOUT_SECONDS) as response:
         payload = json.loads(response.read().decode("utf-8"))
+        _log_api_response("GET", request.full_url, response.status, payload)
     _ensure_success_response(payload, "call-config")
     data = payload.get("data") if isinstance(payload, dict) else None
     protocols = data.get("videoProtocols") if isinstance(data, dict) else None
@@ -230,9 +301,9 @@ def _ensure_success_response(payload: object, endpoint_name: str) -> None:
         raise RuntimeError(f"Benfengate {endpoint_name} request failed.")
 
 
-def _load_startup_catalog() -> (
-    tuple[dict[str, list[dict[str, str]]], dict[str, dict[str, str]]]
-):
+def _load_startup_catalog() -> tuple[
+    dict[str, list[dict[str, str]]], dict[str, dict[str, str]]
+]:
     with ThreadPoolExecutor(
         max_workers=2, thread_name_prefix="benpay-catalog"
     ) as executor:
@@ -315,10 +386,36 @@ async def _request_json(
             body = json.loads(text) if text else {}
         except json.JSONDecodeError:
             body = text[:4096]
+        _log_api_response(method, url, response.status, body, headers, payload)
         if response.status >= 300:
             # Upstream error bodies can echo Authorization or request credentials.
-            raise VideoHTTPError(response.status)
+            parsed = urlparse(url)
+            trace_id = getattr(response, "headers", {}).get("X-Trace-Id", "")
+            if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", trace_id):
+                trace_id = "unavailable"
+            code = body.get("code") if isinstance(body, dict) else None
+            LOGGER.error(
+                "[BenPay] %s %s%s failed: HTTP %s, code=%s, trace_id=%s",
+                method,
+                parsed.hostname,
+                parsed.path,
+                response.status,
+                code if type(code) is int else "unavailable",
+                trace_id,
+            )
+            authorization = headers.get("Authorization", "")
+            raise VideoHTTPError(
+                response.status,
+                _redact_response(
+                    body, [authorization, authorization.removeprefix("Bearer ")]
+                ),
+            )
         if not isinstance(body, dict):
+            LOGGER.error(
+                "[BenPay] %s request returned HTTP %s with non-object JSON content",
+                method,
+                response.status,
+            )
             raise RuntimeError("BenPay returned a non-object JSON response.")
         return body
 
@@ -454,6 +551,10 @@ def _build_request_body(
     reference_videos = (
         (reference_videos or []) if image_mode == "reference_video" else []
     )
+    if protocol == "doubao":
+        resolution = resolution.lower()
+        if resolution not in {"480p", "720p", "1080p"}:
+            raise ValueError("Doubao resolution must be 480p, 720p or 1080p.")
     if protocol == "minimax":
         resolution = resolution.upper()
         if resolution not in {"768P", "480P"}:
@@ -653,13 +754,39 @@ async def _generate_video(
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=60)
         ) as session:
-            if record is None:
+            if record is None or (
+                record["state"] == "creating" and journal.idempotency_key
+            ):
                 protocol_routes = await _video_protocol_routes(protocol)
                 record = await _create_video_task(
                     session, protocol_routes, headers, request_body, journal
                 )
-            video_path = await _resume_video_task(session, headers, journal, record)
+            video_path = await _resume_video_task(
+                session, headers, journal, record, request_body
+            )
     return _video_node_output(video_path)
+
+
+def _creation_error_details(
+    reason: str, key: str, body: dict, response: object, headers: dict
+) -> str:
+    authorization = headers.get("Authorization", "")
+    secrets = [authorization, authorization.removeprefix("Bearer ")]
+    if isinstance(body.get("prompt"), str):
+        secrets.append(body["prompt"])
+    for item in body.get("content", []):
+        if isinstance(item, dict) and isinstance(item.get("text"), str):
+            secrets.append(item["text"])
+    return "\n".join(
+        [
+            str(_redact_response(reason, secrets)),
+            f"Idempotency-Key: {key}",
+            "request: "
+            + json.dumps(_redact_response(body, secrets), ensure_ascii=False),
+            "response: "
+            + json.dumps(_redact_response(response, secrets), ensure_ascii=False),
+        ]
+    )
 
 
 async def _create_video_task(
@@ -669,23 +796,74 @@ async def _create_video_task(
     body: dict,
     journal: TaskJournal,
 ) -> dict:
+    if not journal.idempotency_key:
+        raise TaskRecoveryError("Cannot create a task without an idempotency key.")
+    headers = {**headers, "Idempotency-Key": journal.idempotency_key}
     journal.save("creating", query_url=routes["query"])
-    # Never retry a POST: the provider may have accepted it before a disconnect.
+    create_url = _resolve_video_url(routes["create"])
+    LOGGER.info(
+        "[BenPay] Creating video task at %s; idempotency_key=%s",
+        urlparse(create_url).hostname,
+        journal.idempotency_key,
+    )
+    # Send once per Run. A later Run may replay the same key and request body.
+    response = None
     try:
         response = await run_interruptible(
-            _request_json(
-                session, "POST", _resolve_video_url(routes["create"]), headers, body
-            )
+            _request_json(session, "POST", create_url, headers, body)
         )
         task = _task_payload(response)
         task_id = response.get("task_id") or task.get("task_id") or task.get("id")
         if not isinstance(task_id, str) or not task_id:
-            raise TaskRecoveryError("Create response did not contain a task ID.")
-    except (aiohttp.ClientError, asyncio.TimeoutError, TimeoutError, RuntimeError):
-        raise TaskRecoveryError(
-            "Task creation was not confirmed. No automatic retry will be sent. "
-            "Check your remote task list before choosing Regenerate."
-        ) from None
+            code = response.get("code")
+            LOGGER.error(
+                "[BenPay] Create response has no task ID; code=%s",
+                code if type(code) is int else "unavailable",
+            )
+            error = response.get("error")
+            reason = "Create response did not contain a task ID."
+            if isinstance(error, dict):
+                reason = (
+                    f"{error.get('code', 'API error')}: {error.get('message', reason)}"
+                )
+            raise TaskRecoveryError(reason)
+    except (
+        aiohttp.ClientError,
+        asyncio.TimeoutError,
+        TimeoutError,
+        RuntimeError,
+    ) as exc:
+        reason = (
+            f"HTTP {exc.status}"
+            if isinstance(exc, VideoHTTPError)
+            else str(exc) or type(exc).__name__
+        )
+        if isinstance(exc, VideoHTTPError):
+            response = exc.response
+            if isinstance(response, dict) and isinstance(response.get("error"), dict):
+                error = response["error"]
+                reason += (
+                    f": {error.get('code', 'API error')}: {error.get('message', '')}"
+                )
+        details = _creation_error_details(
+            f"{reason} (creation was not confirmed; no automatic retry)",
+            journal.idempotency_key,
+            body,
+            response,
+            headers,
+        )
+        LOGGER.error("[BenPay] %s", details)
+        try:
+            journal.save(
+                "creating",
+                query_url=routes["query"],
+                creation_error=details.encode("utf-8")[:8192].decode(
+                    "utf-8", errors="ignore"
+                ),
+            )
+        except (OSError, TaskRecoveryError):
+            LOGGER.error("[BenPay] Could not save creation error details")
+        raise TaskRecoveryError(details) from None
     try:
         return journal.save(
             "pending",
@@ -732,12 +910,22 @@ async def _query_video_task(
 
 
 async def _resume_video_task(
-    session: aiohttp.ClientSession, headers: dict, journal: TaskJournal, record: dict
+    session: aiohttp.ClientSession,
+    headers: dict,
+    journal: TaskJournal,
+    record: dict,
+    request_body: dict | None = None,
 ) -> Path:
     if record["state"] == "creating":
         raise TaskRecoveryError(
-            "A previous creation result is unconfirmed. Check the remote task list "
-            "before choosing Regenerate; rerunning will not create another task."
+            record.get("creation_error")
+            or _creation_error_details(
+                "Previous creation unconfirmed; no new request sent.",
+                journal.idempotency_key or "not recorded",
+                request_body or {},
+                "not saved by previous version",
+                headers,
+            )
         )
     task_id = record["task_id"]
     query_url = _normalise_base_url(record["query_url"])
@@ -816,7 +1004,7 @@ class BenpayVideo(IO.ComfyNode):
     def define_schema(cls) -> IO.Schema:
         return IO.Schema(
             node_id="BenpayVideo",
-            display_name="BenPay Video Text to Video",
+            display_name="BenPay Text to Video",
             category="video/BenPay",
             description="Create a video from text with BenPay.",
             search_aliases=["BenPay Video"],
@@ -829,17 +1017,23 @@ class BenpayVideo(IO.ComfyNode):
                     default=DEFAULT_SELECTED_PROTOCOL,
                     tooltip="Choose a video provider.",
                 ),
-                IO.String.Input(
+                IO.Combo.Input(
                     "model",
+                    options=list(
+                        dict.fromkeys(
+                            product["model"]
+                            for products in VIDEO_SUPPLIER_CATALOG.values()
+                            for product in products
+                        )
+                    ),
                     default=_default_model(DEFAULT_SELECTED_PROTOCOL),
-                    tooltip="Model identifier. You can enter a model manually.",
+                    tooltip="Choose a model for the selected video provider.",
                 ),
                 IO.String.Input(
                     "prompt",
                     multiline=True,
                     dynamic_prompts=True,
                     default="",
-                    force_input=True,
                     tooltip="Text prompt sent to the selected BenPay video protocol.",
                 ),
                 IO.Combo.Input(
@@ -922,7 +1116,7 @@ class BenpayVideoFromImages(IO.ComfyNode):
     def define_schema(cls) -> IO.Schema:
         return IO.Schema(
             node_id="BenpayVideoFromImages",
-            display_name="BenPay Video Image to Video",
+            display_name="BenPay Image to Video",
             category="video/BenPay",
             description="Create a video from images or reference videos with BenPay.",
             is_output_node=True,
@@ -934,10 +1128,17 @@ class BenpayVideoFromImages(IO.ComfyNode):
                     default=DEFAULT_SELECTED_PROTOCOL,
                     tooltip="Choose a video provider.",
                 ),
-                IO.String.Input(
+                IO.Combo.Input(
                     "model",
+                    options=list(
+                        dict.fromkeys(
+                            product["model"]
+                            for products in VIDEO_SUPPLIER_CATALOG.values()
+                            for product in products
+                        )
+                    ),
                     default=_default_model(DEFAULT_SELECTED_PROTOCOL),
-                    tooltip="Model identifier. You can enter a model manually.",
+                    tooltip="Choose a model for the selected video provider.",
                 ),
                 IO.Combo.Input(
                     "image_mode",
@@ -961,7 +1162,6 @@ class BenpayVideoFromImages(IO.ComfyNode):
                     multiline=True,
                     dynamic_prompts=True,
                     default="",
-                    force_input=True,
                     tooltip="Text prompt sent to the selected BenPay video protocol.",
                 ),
                 IO.Combo.Input(

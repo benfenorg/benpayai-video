@@ -37,7 +37,8 @@
     "mode_reference_video": "参考视频",
     "provider_doubao": "豆包",
     "provider_minimax": "MiniMax",
-    "regenerate": "下次运行时重新生成",
-    "regenerateConfirm": "原任务可能仍在运行并产生费用。确定下次运行时创建新视频，不恢复原任务吗？"
+    "regenerate": "生成新视频",
+    "regenerateConfirm": "下次运行时创建新视频？可能产生额外费用。",
+    "regenerateReady": "已准备生成新视频 — 请点击运行"
   }
 }

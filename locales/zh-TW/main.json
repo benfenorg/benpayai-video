@@ -37,7 +37,8 @@
     "mode_reference_video": "參考影片",
     "provider_doubao": "豆包",
     "provider_minimax": "MiniMax",
-    "regenerate": "下次執行時重新生成",
-    "regenerateConfirm": "原任務可能仍在執行並產生費用。確定下次執行時建立新影片，不恢復原任務嗎？"
+    "regenerate": "產生新影片",
+    "regenerateConfirm": "下次執行時建立新影片？可能產生額外費用。",
+    "regenerateReady": "已準備產生新影片 — 請點擊執行"
   }
 }

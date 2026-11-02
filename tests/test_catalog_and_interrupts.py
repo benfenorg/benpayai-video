@@ -4,16 +4,20 @@ import ast
 import asyncio
 import importlib.util
 import json
+import logging
 import os
 import re
 import sys
 import tempfile
 import types
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from urllib.parse import urlparse
+from urllib.request import Request
 from uuid import uuid4
 
 import aiohttp
@@ -33,12 +37,15 @@ def load_node_functions(*names):
         "_resolve_model",
         "_default_model",
         "_create_video_task",
+        "_creation_error_details",
         "_resume_video_task",
         "_query_video_task",
         "_task_payload",
         "_normalise_base_url",
         "_video_url_from_payload",
         "_is_readable_video",
+        "_redact_response",
+        "_log_api_response",
     }
     tree = ast.parse((ROOT / "nodes.py").read_text(encoding="utf-8"))
     definitions = [
@@ -58,6 +65,7 @@ def load_node_functions(*names):
         "uuid4": uuid4,
         "aiohttp": aiohttp,
         "av": av,
+        "LOGGER": logging.getLogger("benpay_test.nodes"),
         "TaskJournal": recovery.TaskJournal,
         "TaskRecoveryError": recovery.TaskRecoveryError,
         "VideoHTTPError": recovery.VideoHTTPError,
@@ -99,6 +107,82 @@ def load_interrupts():
 
 
 class CatalogTests(unittest.TestCase):
+    def test_startup_executes_in_source_order_with_successful_catalog_responses(self):
+        source = ROOT / "nodes.py"
+        prefix = []
+        for statement in ast.parse(source.read_text()).body:
+            if isinstance(statement, ast.ClassDef):
+                break
+            if not isinstance(statement, (ast.Import, ast.ImportFrom)):
+                prefix.append(statement)
+
+        def response(request, timeout):
+            if request.full_url.endswith("/suppliers"):
+                payload = {
+                    "data": {
+                        "suppliers": [
+                            {
+                                "supplier": "doubao",
+                                "products": [
+                                    {
+                                        "productCname": "test-video",
+                                        "features": ["videos"],
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                }
+            else:
+                payload = {
+                    "data": {
+                        "videoProtocols": {
+                            "doubao": {
+                                "createTask": {"url": "https://example.com/create"},
+                                "queryTask": {
+                                    "url": "https://example.com/query/{task_id}"
+                                },
+                            }
+                        }
+                    }
+                }
+            stream = BytesIO(json.dumps(payload).encode())
+            stream.status = 200
+            return stream
+
+        namespace = {
+            "__name__": "benpay_startup_test",
+            "logging": logging,
+            "asyncio": asyncio,
+            "json": json,
+            "os": os,
+            "re": re,
+            "Path": Path,
+            "aiohttp": aiohttp,
+            "Request": Request,
+            "urlopen": response,
+            "urlparse": urlparse,
+            "ThreadPoolExecutor": ThreadPoolExecutor,
+            "tempfile": tempfile,
+            "TaskJournal": recovery.TaskJournal,
+            "IO": types.SimpleNamespace(NodeOutput=object),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            namespace["folder_paths"] = types.SimpleNamespace(
+                get_user_directory=lambda: directory
+            )
+            exec(  # noqa: S102 - preserve real module initialization order.
+                compile(ast.Module(body=prefix, type_ignores=[]), str(source), "exec"),
+                namespace,
+            )
+        self.assertEqual(
+            namespace["VIDEO_SUPPLIER_CATALOG"]["doubao"][0]["model"], "test-video"
+        )
+        self.assertEqual(
+            namespace["VIDEO_PROTOCOL_ROUTES"]["doubao"]["create"],
+            "https://example.com/create",
+        )
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

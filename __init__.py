@@ -17,6 +17,6 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "BenpayVideo": "BenPay Video Text to Video",
-    "BenpayVideoFromImages": "BenPay Video Image to Video",
+    "BenpayVideo": "BenPay Text to Video",
+    "BenpayVideoFromImages": "BenPay Image to Video",
 }

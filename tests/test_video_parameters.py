@@ -202,11 +202,24 @@ class VideoParameterTests(unittest.TestCase):
         self.assertEqual(body["resolution"], "768P")
         self.assertEqual(body["duration"], 5)
 
-    def test_doubao_768p_is_preserved(self):
-        body = build_request_body(
-            "doubao", "doubao-seedance-2.0", "test prompt", "768p", 5, "16:9", 42
-        )
-        self.assertEqual(body["metadata"]["resolution"], "768p")
+    def test_doubao_rejects_768p_in_text_and_image_modes(self):
+        for mode in ["text_to_video", "first_frame"]:
+            for resolution in ["768p", "768P"]:
+                with (
+                    self.subTest(mode=mode, resolution=resolution),
+                    self.assertRaisesRegex(ValueError, "Doubao resolution"),
+                ):
+                    build_request_body(
+                        "doubao",
+                        "doubao-seedance-2.0",
+                        "prompt",
+                        resolution,
+                        5,
+                        "16:9",
+                        42,
+                        image_mode=mode,
+                        images=["image-data"],
+                    )
 
     def test_minimax_normalizes_only_documented_resolutions(self):
         for resolution in ["480P", "768P", "480p", "768p"]:
@@ -216,15 +229,21 @@ class VideoParameterTests(unittest.TestCase):
                 )
                 self.assertEqual(body["resolution"], resolution.upper())
         for resolution in ["720p", "1080p", "custom-resolution"]:
-            with self.subTest(resolution=resolution), self.assertRaisesRegex(
-                ValueError, "768P or 480P"
+            with (
+                self.subTest(resolution=resolution),
+                self.assertRaisesRegex(ValueError, "768P or 480P"),
             ):
                 build_request_body(
                     "minimax", "MiniMax-H3", "prompt", resolution, 5, "16:9", 42
                 )
 
-    def test_resolution_is_passed_to_upstream_without_extra_restrictions(self):
-        body = build_request_body(
-            "doubao", "test-model", "test prompt", "custom-resolution", 5, "16:9", 42
-        )
-        self.assertEqual(body["metadata"]["resolution"], "custom-resolution")
+    def test_doubao_accepts_only_documented_resolutions(self):
+        for resolution in ["480p", "720p", "1080p"]:
+            body = build_request_body(
+                "doubao", "test-model", "prompt", resolution, 5, "16:9", 42
+            )
+            self.assertEqual(body["metadata"]["resolution"], resolution)
+        with self.assertRaisesRegex(ValueError, "Doubao resolution"):
+            build_request_body(
+                "doubao", "test-model", "prompt", "custom-resolution", 5, "16:9", 42
+            )

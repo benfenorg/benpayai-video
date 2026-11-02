@@ -68,7 +68,7 @@ test("both nodes use documented MiniMax resolutions when switching providers", (
     resolution.value = "480P";
     protocol.value = "doubao";
     protocol.callback("doubao");
-    assert.deepEqual(resolution.options.values, ["480p", "720p", "768p", "1080p"]);
+    assert.deepEqual(resolution.options.values, ["480p", "720p", "1080p"]);
     assert.equal(resolution.value, "480p");
   }
 });
@@ -83,6 +83,26 @@ test("loading MiniMax workflows fixes invalid resolutions and normalizes casing"
     bindVideoControls(node);
     node.onConfigure();
     assert.equal(node.widgets.find((widget) => widget.name === "resolution").value, expected);
+  }
+});
+
+test("both Doubao nodes replace obsolete 768p on load and after provider changes", () => {
+  for (const image of [false, true]) {
+    const node = createNode(image);
+    const resolution = node.widgets.find((widget) => widget.name === "resolution");
+    node.onConfigure = function () { resolution.value = "768p"; };
+    bindVideoControls(node);
+    node.onConfigure();
+    assert.equal(resolution.value, "720p");
+    assert.deepEqual(resolution.options.values, ["480p", "720p", "1080p"]);
+    const protocol = node.widgets[0];
+    protocol.value = "minimax";
+    protocol.callback("minimax");
+    assert.equal(resolution.value, "768P");
+    protocol.value = "doubao";
+    protocol.callback("doubao");
+    assert.equal(resolution.value, "720p");
+    assert.equal(resolution.options.values.includes("768p"), false);
   }
 });
 
@@ -140,9 +160,14 @@ test("regeneration requires confirmation and affects only the next run", () => {
     globalThis.window = { confirm: () => false };
     button.callback();
     assert.equal(node.widgets[2].value, 0);
+    assert.equal(button.name, "regenerate");
     globalThis.window.confirm = () => true;
     button.callback();
     assert.equal(node.widgets[2].value, 1);
+    assert.equal(button.name, "regenerateReady");
+    assert.equal(button.readyForGeneration, true);
+    node.onExecuted();
+    assert.equal(button.name, "regenerate");
   } finally {
     globalThis.window = previousWindow;
   }

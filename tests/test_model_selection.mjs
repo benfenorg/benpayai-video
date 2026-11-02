@@ -35,9 +35,11 @@ test("switching providers updates the model and preserves the original callback"
     calls++;
   };
   await bindModelSelection(node);
+  assert.deepEqual(model.options.values, ["doubao-seedance-2.0", "shared-model"]);
   protocol.value = "minimax";
   protocol.callback("minimax");
   assert.equal(model.value, "MiniMax-H3");
+  assert.deepEqual(model.options.values, ["MiniMax-H3", "shared-model"]);
   protocol.value = "doubao";
   protocol.callback("doubao");
   assert.equal(model.value, "doubao-seedance-2.0");

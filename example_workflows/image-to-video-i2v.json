@@ -3,38 +3,6 @@
   "last_link_id": 2,
   "nodes": [
     {
-      "id": 1,
-      "type": "PrimitiveStringMultiline",
-      "pos": [
-        40,
-        450
-      ],
-      "size": [
-        400,
-        210
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            1
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "PrimitiveStringMultiline"
-      },
-      "widgets_values": [
-        "保持图片中主体的外观与构图，让主体产生自然、细腻的运动，镜头缓缓推进。"
-      ]
-    },
-    {
       "id": 2,
       "type": "LoadImage",
       "pos": [
@@ -46,7 +14,7 @@
         340
       ],
       "flags": {},
-      "order": 1,
+      "order": 0,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -81,18 +49,13 @@
         60
       ],
       "size": [
-        440,
-        650
+        460,
+        750
       ],
       "flags": {},
-      "order": 2,
+      "order": 1,
       "mode": 0,
       "inputs": [
-        {
-          "name": "prompt",
-          "type": "STRING",
-          "link": 1
-        },
         {
           "name": "images",
           "type": "IMAGE",
@@ -115,29 +78,23 @@
         "doubao-seedance-2.0",
         "first_frame",
         "",
+        "保持图片中主体的外观与构图，让主体产生自然、细腻的运动，镜头缓缓推进。",
         "720p",
         5,
         "adaptive",
         42,
-        "fixed"
+        "fixed",
+        0
       ]
     }
   ],
   "links": [
     [
-      1,
-      1,
-      0,
-      3,
-      0,
-      "STRING"
-    ],
-    [
       2,
       2,
       0,
       3,
-      1,
+      0,
       "IMAGE"
     ]
   ],

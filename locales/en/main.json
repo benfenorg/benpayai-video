@@ -37,7 +37,8 @@
     "mode_reference_video": "Reference video",
     "provider_doubao": "Doubao",
     "provider_minimax": "MiniMax",
-    "regenerate": "Regenerate on next run",
-    "regenerateConfirm": "The previous task may still be running or chargeable. Create a new video on the next run instead of resuming?"
+    "regenerate": "Generate new video",
+    "regenerateConfirm": "Create a new video on the next Run? Additional charges may apply.",
+    "regenerateReady": "Ready for new generation — click Run"
   }
 }

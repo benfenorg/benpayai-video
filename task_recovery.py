@@ -6,6 +6,7 @@ import os
 import stat
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 
 class TaskRecoveryError(RuntimeError):
@@ -13,9 +14,10 @@ class TaskRecoveryError(RuntimeError):
 
 
 class VideoHTTPError(RuntimeError):
-    def __init__(self, status: int) -> None:
+    def __init__(self, status: int, response: object = None) -> None:
         super().__init__(f"BenPay returned HTTP {status}.")
         self.status = status
+        self.response = response
 
 
 def fingerprint(value: object) -> str:
@@ -64,6 +66,9 @@ class TaskJournal:
             "generation": generation,
         }
         self.path = directory / f"{fingerprint(self.identity)}.json"
+        self.idempotency_key = "benpay-video-" + (
+            fingerprint(self.identity) if self.persistent else uuid4().hex
+        )
         self.lock_path = (
             directory / f"{fingerprint([scope, self.identity['credential']])}.lock"
         )
@@ -133,6 +138,12 @@ class TaskJournal:
             value.get(key) != expected for key, expected in self.identity.items()
         ):
             raise TaskRecoveryError("Task recovery identity mismatch.")
+        if "idempotency_key" in value:
+            if value["idempotency_key"] != self.idempotency_key:
+                raise TaskRecoveryError("Task recovery idempotency key mismatch.")
+        else:
+            # Older tasks were sent without a key; do not claim one retroactively.
+            self.idempotency_key = None
         if value.get("state") not in {
             "creating",
             "pending",
@@ -149,12 +160,22 @@ class TaskJournal:
             raise TaskRecoveryError("Task recovery record has no query address.")
         if "output_file" in value and not isinstance(value["output_file"], str):
             raise TaskRecoveryError("Invalid recovered output filename.")
+        if "creation_error" in value and not isinstance(value["creation_error"], str):
+            raise TaskRecoveryError("Invalid recovered creation error.")
         return value
 
     def save(self, state: str, **fields: str) -> dict:
-        if set(fields) - {"task_id", "query_url", "output_file", "status"}:
+        if set(fields) - {
+            "task_id",
+            "query_url",
+            "output_file",
+            "status",
+            "creation_error",
+        }:
             raise TaskRecoveryError("Unexpected task recovery fields.")
         value = {**self.identity, "state": state, **fields}
+        if self.idempotency_key is not None:
+            value["idempotency_key"] = self.idempotency_key
         payload = (json.dumps(value, indent=2) + "\n").encode("utf-8")
         if len(payload) > 16384:
             raise TaskRecoveryError("Task recovery record is too large.")

@@ -27,7 +27,7 @@ export function bindVideoControls(node) {
       const minimax = protocol.value === "minimax";
       const resolutions = minimax
         ? ["768P", "480P"]
-        : ["480p", "720p", "768p", "1080p"];
+        : ["480p", "720p", "1080p"];
       const current = minimax
         ? String(resolution.value).toUpperCase()
         : String(resolution.value).toLowerCase();
@@ -86,9 +86,17 @@ export function bindVideoControls(node) {
       if (generation.value >= 0x7fffffff) return;
       generation.value = Number(generation.value || 0) + 1;
       generation.callback?.(generation.value);
+      regenerateButton.readyForGeneration = true;
+      regenerateButton.name = t("regenerateReady");
       node.setDirtyCanvas(true, true);
     }, { serialize: false });
     regenerateButton.serialize = false;
+    const onExecuted = node.onExecuted;
+    node.onExecuted = function (...args) {
+      regenerateButton.readyForGeneration = false;
+      regenerateButton.name = t("regenerate");
+      return onExecuted?.apply(this, args);
+    };
   }
   synchronize();
   return regenerateButton;
